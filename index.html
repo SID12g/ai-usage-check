@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 남은 사용량</title>
+<style>
+  :root {
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --border: #e1e0d9;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --skeleton: #ecebe6;
+    --accent: #2a78d6;
+    --warning: #fab219;
+    --critical: #d03b3b;
+    --track-mix: 22%;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --border: #2c2c2a;
+      --ink: #f0efec;
+      --ink-2: #c3c2b7;
+      --skeleton: #2c2c2a;
+      --accent: #3987e5;
+      --track-mix: 30%;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    word-break: keep-all;
+    overflow-wrap: break-word;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 40px 16px 48px; }
+
+  .top { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; margin-bottom: 24px; }
+  h1 { margin: 0; font-size: 24px; font-weight: 650; letter-spacing: -0.01em; }
+  .updated { margin: 4px 0 0; font-size: 13px; color: var(--ink-2); }
+
+  button {
+    flex: none;
+    display: inline-flex; align-items: center; gap: 6px;
+    white-space: nowrap;
+    padding: 8px 14px;
+    font: inherit; font-size: 14px; color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--border); border-radius: 8px;
+    cursor: pointer;
+  }
+  button:hover { background: color-mix(in oklab, var(--border) 45%, var(--surface)); }
+  button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button:disabled { cursor: progress; }
+  button svg { width: 16px; height: 16px; }
+  button:disabled svg { animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+  .card {
+    display: flex; flex-direction: column;
+    padding: 20px;
+    background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px;
+  }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+  h2 { margin: 0; font-size: 17px; font-weight: 650; }
+  .plan {
+    font-size: 12px; color: var(--ink-2);
+    padding: 2px 10px;
+    border: 1px solid var(--border); border-radius: 999px;
+  }
+  .plan:empty { display: none; }
+
+  .row + .row { margin-top: 22px; }
+  .row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  .label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--ink-2); }
+  .value { white-space: nowrap; }
+  .value .num { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; }
+  .value .unit { margin-left: 3px; font-size: 13px; color: var(--ink-2); }
+
+  .row { --fill: var(--accent); }
+  .row[data-state="warn"] { --fill: var(--warning); }
+  .row[data-state="crit"], .row[data-state="out"] { --fill: var(--critical); }
+  .meter {
+    height: 8px; margin: 8px 0 6px;
+    border-radius: 4px; overflow: hidden;
+    background: var(--border);
+    background: color-mix(in oklab, var(--fill) var(--track-mix), var(--surface));
+  }
+  .meter > div { height: 100%; border-radius: 4px; background: var(--fill); transition: width 0.4s ease; }
+  .meta { margin: 0; font-size: 13px; color: var(--ink-2); }
+
+  .status { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--ink); }
+  .status svg { width: 14px; height: 14px; fill: var(--fill); }
+
+  .extras { margin: 20px 0 0; padding: 14px 0 0; list-style: none; border-top: 1px solid var(--border); font-size: 13px; color: var(--ink-2); }
+  .extras li + li { margin-top: 4px; }
+
+  .error { display: flex; gap: 10px; align-items: flex-start; margin: 0; font-size: 14px; }
+  .error svg { flex: none; width: 18px; height: 18px; margin-top: 2px; fill: var(--critical); }
+  .error code { font-size: 13px; padding: 1px 5px; border-radius: 4px; background: color-mix(in oklab, var(--border) 60%, var(--surface)); }
+
+  .note { margin: auto 0 0; padding-top: 20px; font-size: 12px; color: var(--ink-2); }
+
+  .skeleton .bar { height: 12px; border-radius: 4px; background: var(--skeleton); animation: pulse 1.4s ease-in-out infinite; }
+  .skeleton .bar + .bar { margin-top: 10px; }
+  .skeleton .row + .row { margin-top: 28px; }
+  @keyframes pulse { 50% { opacity: 0.5; } }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton .bar, button:disabled svg { animation: none; }
+    .meter > div { transition: none; }
+  }
+
+  @media (max-width: 520px) {
+    main { padding-top: 24px; }
+    .top { align-items: center; }
+    h1 { font-size: 20px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header class="top">
+    <div>
+      <h1>남은 사용량</h1>
+      <p class="updated" id="updated" aria-live="polite">불러오는 중…</p>
+    </div>
+    <button type="button" id="refresh">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 4a8 8 0 0 1 7.75 6h-2.1A6 6 0 1 0 18 14h2.1A8 8 0 1 1 12 4Zm5 0h4v4h-4l1.4-1.4L17 4Z"/></svg>
+      새로고침
+    </button>
+  </header>
+
+  <div class="grid">
+    <section class="card" id="claude" aria-labelledby="claude-title">
+      <div class="card-head"><h2 id="claude-title">Claude</h2><span class="plan"></span></div>
+      <div class="body"></div>
+      <p class="note">Claude Code에 로그인된 계정 기준입니다. claude.ai, 데스크톱 앱, Claude Code가 같은 한도를 함께 씁니다.</p>
+    </section>
+    <section class="card" id="chatgpt" aria-labelledby="chatgpt-title">
+      <div class="card-head"><h2 id="chatgpt-title">ChatGPT</h2><span class="plan"></span></div>
+      <div class="body"></div>
+      <p class="note">ChatGPT 플랜의 Codex 사용 한도입니다. 채팅 메시지 한도는 OpenAI가 조회 방법을 제공하지 않아 표시할 수 없습니다.</p>
+    </section>
+  </div>
+</main>
+
+<script>
+  const SOURCES = ["claude", "chatgpt"];
+  const REFRESH_MS = 2 * 60 * 1000;
+
+  const timeFmt = new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit" });
+  const dayTimeFmt = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short", hour: "numeric", minute: "2-digit" });
+  const dayFmt = new Intl.DateTimeFormat("ko-KR", { month: "long", day: "numeric", weekday: "short" });
+  const clockFmt = new Intl.DateTimeFormat("ko-KR", { hour: "numeric", minute: "2-digit", second: "2-digit" });
+
+  const ICONS = {
+    warn: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 1 21h22L12 2Zm-1 7h2v6h-2V9Zm0 8h2v2h-2v-2Z"/></svg>',
+    crit: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1 5h2v7h-2V7Zm0 9h2v2h-2v-2Z"/></svg>',
+  };
+  ICONS.out = ICONS.crit;
+  const STATUS_TEXT = { warn: "곧 소진", crit: "거의 소진", out: "한도 도달" };
+
+  let lastLoadedAt = 0;
+
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  // `명령어`를 <code>로 바꿔 오류 안내를 읽기 쉽게 합니다.
+  const withCode = (s) => esc(s).replace(/`([^`]+)`/g, "<code>$1</code>");
+
+  function stateOf(remaining) {
+    if (remaining <= 0) return "out";
+    if (remaining <= 10) return "crit";
+    if (remaining <= 25) return "warn";
+    return "ok";
+  }
+
+  function untilText(epochSec) {
+    const mins = Math.round((epochSec * 1000 - Date.now()) / 60000);
+    if (mins <= 0) return "곧 초기화";
+    const d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60), m = mins % 60;
+    const parts = d ? [`${d}일`, h && `${h}시간`] : h ? [`${h}시간`, m && `${m}분`] : [`${m}분`];
+    return `${parts.filter(Boolean).join(" ")} 후 초기화`;
+  }
+
+  function atText(epochSec) {
+    const ms = epochSec * 1000;
+    return (ms - Date.now() < 86400000 ? timeFmt : dayTimeFmt).format(ms);
+  }
+
+  function resetText(epochSec) {
+    return `${untilText(epochSec)} (${atText(epochSec)})`;
+  }
+
+  function rowHTML(w) {
+    const used = Math.round(Math.min(100, Math.max(0, w.usedPercent)));
+    const remaining = 100 - used;
+    const state = stateOf(remaining);
+    const status = STATUS_TEXT[state]
+      ? `<span class="status">${ICONS[state]}${STATUS_TEXT[state]}</span>`
+      : "";
+    const reset = w.resetsAt ? ` · <span data-reset="${w.resetsAt}">${resetText(w.resetsAt)}</span>` : "";
+    return `
+      <div class="row" data-state="${state}">
+        <div class="row-top">
+          <span class="label">${esc(w.label)}${status}</span>
+          <span class="value"><span class="num">${remaining}</span><span class="unit">% 남음</span></span>
+        </div>
+        <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${remaining}"
+             aria-label="${esc(w.label)} 남은 사용량"><div style="width:${remaining}%"></div></div>
+        <p class="meta">사용 ${used}%${reset}</p>
+      </div>`;
+  }
+
+  function extrasHTML(data) {
+    const items = [];
+    const rc = data.resetCredits;
+    if (rc && rc.count) {
+      const expiry = rc.nextExpiry ? ` · 가장 빠른 만료 ${dayFmt.format(rc.nextExpiry * 1000)}` : "";
+      items.push(`한도 초기화 쿠폰 ${rc.count}장 보유${expiry}`);
+    }
+    if (data.creditBalance != null) items.push(`크레딧 잔액 ${data.creditBalance}`);
+    return items.length ? `<ul class="extras">${items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : "";
+  }
+
+  function render(card, data) {
+    const body = card.querySelector(".body");
+    card.querySelector(".plan").textContent = (data.ok && data.plan) || "";
+    if (!data.ok) {
+      body.innerHTML = `<p class="error" role="alert">${ICONS.crit}<span>${withCode(data.error)}</span></p>`;
+      return;
+    }
+    body.innerHTML = data.windows.map(rowHTML).join("") + extrasHTML(data);
+  }
+
+  function renderSkeleton(card) {
+    card.querySelector(".body").innerHTML = '<div class="skeleton">' +
+      '<div class="row"><div class="bar" style="width:40%"></div><div class="bar"></div></div>'.repeat(2) + "</div>";
+  }
+
+  async function load(name) {
+    const card = document.getElementById(name);
+    try {
+      const res = await fetch(`/api/${name}`, { cache: "no-store" });
+      render(card, await res.json());
+    } catch {
+      render(card, { ok: false, error: "로컬 서버에 연결하지 못했습니다. 터미널에서 `python3 usage_server.py`를 실행한 뒤 http://127.0.0.1:8787 로 여세요." });
+    }
+  }
+
+  const button = document.getElementById("refresh");
+  const updated = document.getElementById("updated");
+
+  async function loadAll() {
+    if (button.disabled) return;
+    button.disabled = true;
+    await Promise.all(SOURCES.map(load));
+    lastLoadedAt = Date.now();
+    updated.textContent = `마지막 업데이트 ${clockFmt.format(lastLoadedAt)} · 2분마다 자동 갱신`;
+    button.disabled = false;
+  }
+
+  // 남은 시간 문구를 갱신하고, 초기화 시각이 지난 한도가 있으면 다시 불러옵니다.
+  function tick() {
+    let passed = false;
+    for (const el of document.querySelectorAll("[data-reset]")) {
+      const at = Number(el.dataset.reset);
+      el.textContent = resetText(at);
+      if (at * 1000 < Date.now() && at * 1000 > lastLoadedAt) passed = true;
+    }
+    if (passed) loadAll();
+  }
+
+  SOURCES.forEach((name) => renderSkeleton(document.getElementById(name)));
+  button.addEventListener("click", loadAll);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && Date.now() - lastLoadedAt > 60000) loadAll();
+  });
+  setInterval(loadAll, REFRESH_MS);
+  setInterval(tick, 30000);
+  loadAll();
+</script>
+</body>
+</html>
